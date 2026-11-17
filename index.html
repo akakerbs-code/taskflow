@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="de" class="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>TaskFlow</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg">
+<meta name="theme-color" content="#0d1020">
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/htm@3.1.1/dist/htm.js"></script>
+<style>
+:root{--bg:#f4f5fb;--card:#fff;--bd:#e3e6f2;--tx:#1b1f33;--mu:#6b7090;--hv:#eceefa}
+.dark{--bg:#0d1020;--card:#161a2e;--bd:#262b45;--tx:#e8eaf6;--mu:#8d93b8;--hv:#1f2542}
+body{background:var(--bg);color:var(--tx);font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif;transition:background .3s,color .3s}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:1.25rem;transition:transform .2s,background .3s}
+.mu{color:var(--mu)}
+.inp{width:100%;background:var(--bg);color:var(--tx);border:1px solid var(--bd);border-radius:.75rem;padding:.55rem .8rem;outline:none;margin-top:.2rem;transition:border .2s}
+.inp:focus{border-color:#6366f1}
+.btn{background:var(--hv);border-radius:.75rem;padding:.5rem .8rem;font-weight:500;transition:.2s;display:inline-flex;gap:.4rem;align-items:center;justify-content:center}
+.btn:hover{filter:brightness(1.2);transform:translateY(-1px)}
+.pri{background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff}
+.nav{display:flex;gap:.7rem;align-items:center;width:100%;padding:.65rem .8rem;border-radius:.8rem;margin-bottom:.2rem;color:var(--mu);transition:.2s}
+.nav:hover{background:var(--hv)}.nav.on{background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff}
+.tab{padding:.4rem .9rem;border-radius:999px;color:var(--mu)}.tab.on{background:var(--hv);color:var(--tx);font-weight:600}
+@keyframes up{from{opacity:0;transform:translateY(8px)}}
+.fade{animation:up .3s ease}
+button{cursor:pointer}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+const {useState,useEffect,useRef}=React;const html=htm.bind(React.createElement);
+const KEY='taskflow.v1';
+const uid=()=>Math.random().toString(36).slice(2,10);
+const DEF={tasks:[],notes:[],events:[],cats:['Privat','Arbeit','Einkauf'],set:{theme:'dark',name:'',repeat:30,remind:15}};
+const load=()=>{try{const d=JSON.parse(localStorage.getItem(KEY));return{...DEF,...d,set:{...DEF.set,...(d&&d.set)}}}catch{return DEF}};
+const p2=n=>String(n).padStart(2,'0');
+const ymd=d=>`${d.getFullYear()}-${p2(d.getMonth()+1)}-${p2(d.getDate())}`;
+const loc=d=>ymd(d)+'T'+p2(d.getHours())+':'+p2(d.getMinutes());
+const fmt=s=>s?new Date(s).toLocaleString('de-DE',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}):'';
+const nextDue=(due,r)=>{const d=new Date(due);if(r==='daily')d.setDate(d.getDate()+1);if(r==='weekly')d.setDate(d.getDate()+7);if(r==='monthly')d.setMonth(d.getMonth()+1);return loc(d)};
+const byDue=(a,b)=>(a.due||'9').localeCompare(b.due||'9');
+const ups=(a,x)=>a.some(i=>i.id===x.id)?a.map(i=>i.id===x.id?{...x,last:i.due===x.due?i.last:0}:i):[...a,x];
+const PC=['','#f43f5e','#f59e0b','#22c55e'],PN=['','Hoch','Mittel','Niedrig'];
+const REM=[['','Keine Erinnerung'],[0,'Zur Fälligkeit'],[5,'5 Min vorher'],[15,'15 Min vorher'],[30,'30 Min vorher'],[60,'1 Std vorher'],[1440,'1 Tag vorher']];
+const REP=[[0,'Nicht wiederholen'],[5,'alle 5 Min'],[10,'alle 10 Min'],[15,'alle 15 Min'],[30,'alle 30 Min'],[60,'jede Stunde'],[240,'alle 4 Std']];
+const RAYS='M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2';
+const P={home:'M3 11l9-8 9 8v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z',check:'M20 6L9 17l-5-5',note:'M4 4h16v16H4zM8 9h8M8 13h8M8 17h5',cal:'M3 5h18v16H3zM3 10h18M8 3v4M16 3v4',chart:'M4 20V10M10 20V4M16 20v-7M22 20H2',gear:'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z'+RAYS,plus:'M12 5v14M5 12h14',trash:'M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13',edit:'M4 20h4L19 9l-4-4L4 16z',bell:'M6 16v-5a6 6 0 0 1 12 0v5l2 2H4zM10 21h4',star:'M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z',search:'M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM21 21l-5-5',moon:'M20 14A8 8 0 0 1 10 4a8 8 0 1 0 10 10z',sun:'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z'+RAYS,arch:'M3 4h18v4H3zM5 8v12h14V8M10 12h4',x:'M6 6l12 12M18 6L6 18',rep:'M17 2l4 4-4 4M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4M21 13v2a3 3 0 0 1-3 3H3',left:'M15 6l-6 6 6 6',right:'M9 6l6 6-6 6'};
+const I=({n,s=18,f})=>html`<svg width=${s} height=${s} viewBox="0 0 24 24" fill=${f?'currentColor':'none'} stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d=${P[n]}/></svg>`;
+const NAV=[['home','Dashboard','home'],['tasks','Aufgaben','check'],['cal','Kalender','cal'],['notes','Notizen','note'],['stats','Statistik','chart'],['set','Einstellungen','gear']];
+
+async function notify(t,b,toast){toast&&toast('🔔 '+t+' – '+b);
+ if(!('Notification' in window)||Notification.permission!=='granted')return;
+ try{const r=navigator.serviceWorker&&await navigator.serviceWorker.getRegistration();if(r){await r.showNotification(t,{body:b,icon:'icon.svg',tag:t+b});return}}catch{}
+ try{new Notification(t,{body:b,icon:'icon.svg'})}catch{}}
+
+function parseQuick(s,S){let t=s,d=null,prio=2,cat='';
+ if(/\bheute\b/i.test(t)){d=new Date();t=t.replace(/\bheute\b/i,'')}
+ if(/\bmorgen\b/i.test(t)){d=new Date();d.setDate(d.getDate()+1);t=t.replace(/\bmorgen\b/i,'')}
+ const m=t.match(/\b(\d{1,2}):(\d{2})\b/);
+ if(m){d=d||new Date();d.setHours(+m[1],+m[2],0,0);t=t.replace(m[0],'')}else if(d)d.setHours(9,0,0,0);
+ if(/!(hoch|1)/i.test(t)){prio=1;t=t.replace(/!(hoch|1)/i,'')}
+ if(/!(niedrig|3)/i.test(t)){prio=3;t=t.replace(/!(niedrig|3)/i,'')}
+ const c=t.match(/#(\S+)/);if(c){cat=c[1];t=t.replace(c[0],'')}
+ return{id:uid(),title:t.replace(/\s+/g,' ').trim()||s,desc:'',cat,prio,due:d?loc(d):'',remind:S.set.remind,repeat:S.set.repeat,recur:'none',done:false,created:Date.now()}}
+
+const Modal=({t,onClose,children})=>html`<div class="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-3 bg-black/60 backdrop-blur-sm fade" onMouseDown=${e=>e.target===e.currentTarget&&onClose()}><div class="card w-full max-w-lg max-h-[90vh] overflow-auto p-5 fade"><div class="flex justify-between items-center mb-4"><h3 class="text-lg font-semibold">${t}</h3><button class="btn" onClick=${onClose}><${I} n="x"/></button></div>${children}</div></div>`;
+const F=({l,children})=>html`<label class="block mb-3"><span class="text-xs mu">${l}</span>${children}</label>`;
+const Sel=({v,o,on})=>html`<select class="inp" value=${v} onChange=${on}>${o.map(([a,b])=>html`<option key=${a} value=${a}>${b}</option>`)}</select>`;
+
+function TaskForm({t,S,onSave,onDel,onClose}){
+ const [f,setF]=useState(t);const [nc,setNc]=useState('');const s=k=>e=>setF({...f,[k]:e.target.value});
+ const ex=S.tasks.some(x=>x.id===f.id);
+ return html`<${Modal} t=${ex?'Aufgabe bearbeiten':'Neue Aufgabe'} onClose=${onClose}>
+ <form onSubmit=${e=>{e.preventDefault();if(f.title.trim())onSave({...f,title:f.title.trim(),cat:nc.trim()||f.cat})}}>
+  <${F} l="Titel"><input class="inp" autoFocus required value=${f.title} onInput=${s('title')}/><//>
+  <${F} l="Beschreibung"><textarea class="inp" rows="2" value=${f.desc} onInput=${s('desc')}></textarea><//>
+  <div class="grid grid-cols-2 gap-3">
+   <${F} l="Kategorie"><${Sel} v=${f.cat} o=${[['','– keine –'],...S.cats.map(c=>[c,c])]} on=${s('cat')}/><//>
+   <${F} l="Oder neue Kategorie"><input class="inp" value=${nc} onInput=${e=>setNc(e.target.value)} placeholder="z. B. Sport"/><//>
+   <${F} l="Priorität"><${Sel} v=${f.prio} o=${[[1,'Hoch'],[2,'Mittel'],[3,'Niedrig']]} on=${s('prio')}/><//>
+   <${F} l="Fällig am"><input type="datetime-local" class="inp" value=${f.due} onInput=${s('due')}/><//>
+   <${F} l="Erinnerung"><${Sel} v=${f.remind} o=${REM} on=${s('remind')}/><//>
+   <${F} l="Erneut erinnern"><${Sel} v=${f.repeat} o=${REP} on=${s('repeat')}/><//>
+  </div>
+  <${F} l="Wiederholung der Aufgabe"><${Sel} v=${f.recur} o=${[['none','Einmalig'],['daily','Täglich'],['weekly','Wöchentlich'],['monthly','Monatlich']]} on=${s('recur')}/><//>
+  <p class="text-xs mu mb-3">Erinnerungen werden wiederholt, bis die Aufgabe erledigt ist.</p>
+  <div class="flex gap-2"><button class="btn pri flex-1">Speichern</button>${ex&&html`<button type="button" class="btn" onClick=${()=>onDel(f.id)}><${I} n="trash"/></button>`}</div>
+ </form><//>`}
+
+function EventForm({e0,S,onSave,onDel,onClose}){
+ const [f,setF]=useState(e0);const s=k=>e=>setF({...f,[k]:e.target.value});const ex=S.events.some(x=>x.id===f.id);
+ return html`<${Modal} t=${ex?'Termin bearbeiten':'Neuer Termin'} onClose=${onClose}>
+ <form onSubmit=${e=>{e.preventDefault();if(f.title.trim()&&f.due)onSave(f)}}>
+  <${F} l="Titel"><input class="inp" autoFocus required value=${f.title} onInput=${s('title')}/><//>
+  <${F} l="Beginn"><input type="datetime-local" required class="inp" value=${f.due} onInput=${s('due')}/><//>
+  <${F} l="Erinnerung"><${Sel} v=${f.remind} o=${REM} on=${s('remind')}/><//>
+  <${F} l="Details"><textarea class="inp" rows="2" value=${f.desc} onInput=${s('desc')}></textarea><//>
+  <div class="flex gap-2"><button class="btn pri flex-1">Speichern</button>${ex&&html`<button type="button" class="btn" onClick=${()=>onDel(f.id)}><${I} n="trash"/></button>`}</div>
+ </form><//>`}
+
+function NoteEditor({id,S,up,onClose}){
+ const n=S.notes.find(x=>x.id===id);if(!n)return null;
+ const set=o=>up('notes',a=>a.map(x=>x.id===id?{...x,...o,upd:Date.now()}:x));
+ const close=()=>{if(!n.title.trim()&&!n.body.trim())up('notes',a=>a.filter(x=>x.id!==id));onClose()};
+ return html`<${Modal} t="Notiz (wird automatisch gespeichert)" onClose=${close}>
+  <input class="inp mb-3 text-lg font-semibold" placeholder="Titel" value=${n.title} onInput=${e=>set({title:e.target.value})}/>
+  <textarea class="inp mb-3" rows="9" placeholder="Schreibe hier…" value=${n.body} onInput=${e=>set({body:e.target.value})}></textarea>
+  <div class="grid grid-cols-2 gap-3">
+   <${F} l="Kategorie"><${Sel} v=${n.cat||''} o=${[['','– keine –'],...S.cats.map(c=>[c,c])]} on=${e=>set({cat:e.target.value})}/><//>
+   <${F} l="Tags (Komma getrennt)"><input class="inp" defaultValue=${n.tags.join(', ')} onBlur=${e=>set({tags:e.target.value.split(',').map(t=>t.trim()).filter(Boolean)})}/><//>
+  </div>
+  <div class="flex gap-2"><button class=${'btn flex-1 '+(n.fav?'pri':'')} onClick=${()=>set({fav:!n.fav})}><${I} n="star" f=${n.fav}/> Favorit</button>
+  <button class="btn" onClick=${()=>{up('notes',a=>a.filter(x=>x.id!==id));onClose()}}><${I} n="trash"/> Löschen</button><button class="btn pri" onClick=${close}>Fertig</button></div><//>`}
+
+function Row({t,X,drag}){const od=!t.done&&t.due&&new Date(t.due)<new Date();
+ return html`<div draggable=${!!drag} onDragStart=${()=>X.dr.current=t.id} onDragOver=${e=>drag&&e.preventDefault()} onDrop=${()=>drag&&X.reorder(X.dr.current,t.id)} class="card p-3 flex items-center gap-3 fade hover:-translate-y-0.5" style=${{borderLeft:'4px solid '+(od?'#ef4444':PC[t.prio]),background:od?'rgba(239,68,68,.1)':''}}>
+  <button onClick=${()=>X.toggle(t.id)} title=${t.done?'Wieder öffnen':'Erledigt'} class="w-6 h-6 rounded-full border-2 grid place-items-center shrink-0" style=${{borderColor:PC[t.prio],background:t.done?PC[t.prio]:'transparent',color:'#fff'}}>${t.done&&html`<${I} n="check" s=${14}/>`}</button>
+  <div class="min-w-0 flex-1 cursor-pointer" onClick=${()=>X.editTask(t)}>
+   <div class=${'truncate '+(t.done?'line-through mu':'')}>${t.title}</div>
+   <div class="text-xs mu flex flex-wrap items-center gap-2 mt-0.5">${t.cat&&html`<span>#${t.cat}</span>`}${t.due&&html`<span style=${{color:od?'#ef4444':''}}>${od?'Überfällig · ':''}${fmt(t.due)}</span>`}${t.recur!=='none'&&html`<${I} n="rep" s=${13}/>`}${!t.done&&t.due&&t.remind!==''&&html`<${I} n="bell" s=${13}/>`}</div></div>
+  ${t.done&&!t.arch&&html`<button class="btn" title="Archivieren" onClick=${()=>X.archive(t.id)}><${I} n="arch"/></button>`}
+  <button class="btn hidden sm:inline-flex" title="Bearbeiten" onClick=${()=>X.editTask(t)}><${I} n="edit"/></button>
+  <button class="btn" title="Löschen" onClick=${()=>X.delTask(t.id)}><${I} n="trash"/></button></div>`}
+
+const Stat=({l,v,c})=>html`<div class="card p-4 fade"><div class="text-xs mu">${l}</div><div class="text-3xl font-bold mt-1" style=${{color:c}}>${v}</div></div>`;
+const Empty=({m})=>html`<div class="card p-8 text-center mu fade">${m}</div>`;
+
+function Home({X}){const {S}=X;const T=S.tasks.filter(t=>!t.arch);const done=T.filter(t=>t.done).length,open=T.length-done,pct=T.length?Math.round(done/T.length*100):0;
+ const end=new Date();end.setHours(23,59,59,999);const now=new Date();
+ const today=S.tasks.filter(t=>!t.done&&t.due&&new Date(t.due)<=end).sort(byDue);
+ const rem=[...S.tasks.filter(t=>!t.done&&t.due&&t.remind!==''&&t.remind!=null),...S.events.filter(e=>e.remind!==''&&e.remind!=null)].filter(x=>new Date(x.due)>=now).sort(byDue).slice(0,6);
+ const h=now.getHours(),g=h<11?'Guten Morgen':h<18?'Guten Tag':'Guten Abend';
+ const od=S.tasks.filter(t=>!t.done&&t.due&&new Date(t.due)<now).length;
+ return html`<div class="fade">
+  <h1 class="text-2xl md:text-3xl font-bold">${g}${S.set.name?', '+S.set.name:''} 👋</h1>
+  <p class="mu mb-5">${now.toLocaleDateString('de-DE',{weekday:'long',day:'numeric',month:'long'})} · ${od?od+' überfällig':'alles im Plan'}</p>
+  ${X.perm!=='granted'&&'Notification' in window&&html`<div class="card p-4 mb-5 flex items-center justify-between gap-3"><span class="text-sm">Aktiviere Benachrichtigungen, um Erinnerungen zu erhalten.</span><button class="btn pri" onClick=${X.askPerm}><${I} n="bell"/> Aktivieren</button></div>`}
+  <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
+   <${Stat} l="Alle Aufgaben" v=${T.length}/><${Stat} l="Erledigt" v=${done} c="#22c55e"/><${Stat} l="Offen" v=${open} c="#f59e0b"/>
+   <div class="card p-4 flex items-center gap-3 fade"><svg width="64" height="64" viewBox="0 0 100 100"><circle cx="50" cy="50" r="42" fill="none" stroke="var(--hv)" stroke-width="12"/><circle cx="50" cy="50" r="42" fill="none" stroke="#8b5cf6" stroke-width="12" stroke-linecap="round" stroke-dasharray=${pct*2.64+' 264'} transform="rotate(-90 50 50)" style=${{transition:'stroke-dasharray .6s'}}/></svg><div><div class="text-xs mu">Fortschritt</div><div class="text-2xl font-bold">${pct}%</div></div></div></div>
+  <div class="grid lg:grid-cols-2 gap-5">
+   <div><div class="flex justify-between items-center mb-2"><h2 class="font-semibold">Heute</h2><button class="btn pri" onClick=${()=>X.newTask(ymd(new Date())+'T'+p2(Math.min(23,h+1))+':00')}><${I} n="plus"/> Aufgabe</button></div><div class="space-y-2">${today.length?today.map(t=>html`<${Row} key=${t.id} t=${t} X=${X}/>`):html`<${Empty} m="Nichts mehr für heute 🎉"/>`}</div></div>
+   <div><h2 class="font-semibold mb-2">Anstehende Erinnerungen</h2><div class="space-y-2">${rem.length?rem.map(x=>html`<div key=${x.id} class="card p-3 flex items-center gap-3 fade cursor-pointer" onClick=${()=>x.title&&(x.created?X.editTask(x):X.editEvent(x))}><span class="text-indigo-400"><${I} n=${x.created?'bell':'cal'}/></span><div class="flex-1 min-w-0"><div class="truncate">${x.title}</div><div class="text-xs mu">${fmt(x.due)}</div></div></div>`):html`<${Empty} m="Keine Erinnerungen geplant"/>`}</div></div>
+  </div></div>`}
+
+function Tasks({X}){const {S}=X;const [tab,setTab]=useState('open'),[c,setC]=useState(''),[p,setP]=useState(''),[so,setSo]=useState('manual'),[q,setQ]=useState('');
+ let L=S.tasks.filter(t=>tab==='open'?!t.done:tab==='done'?t.done&&!t.arch:t.arch).filter(t=>(!c||t.cat===c)&&(!p||t.prio==p)&&(!q||(t.title+' '+t.desc).toLowerCase().includes(q.toLowerCase())));
+ if(so==='due')L=[...L].sort(byDue);if(so==='prio')L=[...L].sort((a,b)=>a.prio-b.prio);if(so==='new')L=[...L].sort((a,b)=>b.created-a.created);if(so==='az')L=[...L].sort((a,b)=>a.title.localeCompare(b.title));
+ const cn=k=>S.tasks.filter(t=>k==='open'?!t.done:k==='done'?t.done&&!t.arch:t.arch).length;
+ return html`<div class="fade"><div class="flex justify-between items-center mb-4"><h1 class="text-2xl font-bold">Aufgaben</h1><button class="btn pri" onClick=${()=>X.newTask('')}><${I} n="plus"/> Neue Aufgabe</button></div>
+  <div class="flex gap-1 mb-3">${[['open','Offen'],['done','Erledigt'],['arch','Archiv']].map(([k,l])=>html`<button key=${k} class=${'tab '+(tab===k?'on':'')} onClick=${()=>setTab(k)}>${l} (${cn(k)})</button>`)}</div>
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
+   <input class="inp col-span-2 md:col-span-1" style=${{marginTop:0}} placeholder="🔍 Suchen…" value=${q} onInput=${e=>setQ(e.target.value)}/>
+   <${Sel} v=${c} o=${[['','Alle Kategorien'],...S.cats.map(x=>[x,x])]} on=${e=>setC(e.target.value)}/>
+   <${Sel} v=${p} o=${[['','Alle Prioritäten'],[1,'Hoch'],[2,'Mittel'],[3,'Niedrig']]} on=${e=>setP(e.target.value)}/>
+   <${Sel} v=${so} o=${[['manual','Manuell (Drag & Drop)'],['due','Fälligkeit'],['prio','Priorität'],['new','Neueste'],['az','A–Z']]} on=${e=>setSo(e.target.value)}/></div>
+  ${tab==='done'&&L.length>0&&html`<button class="btn mb-3" onClick=${X.archiveAll}><${I} n="arch"/> Alle archivieren</button>`}
+  ${tab==='arch'&&L.length>0&&html`<button class="btn mb-3" onClick=${X.clearArch}><${I} n="trash"/> Archiv leeren</button>`}
+  <div class="space-y-2">${L.length?L.map(t=>html`<${Row} key=${t.id} t=${t} X=${X} drag=${so==='manual'&&tab==='open'}/>`):html`<${Empty} m="Keine Aufgaben gefunden"/>`}</div></div>`}
+
+function Notes({X}){const {S}=X;const [q,setQ]=useState(''),[fav,setFav]=useState(false),[tg,setTg]=useState('');
+ const tags=[...new Set(S.notes.flatMap(n=>[...n.tags,n.cat].filter(Boolean)))];
+ const L=S.notes.filter(n=>(!fav||n.fav)&&(!tg||n.tags.includes(tg)||n.cat===tg)&&(!q||(n.title+' '+n.body+' '+n.tags.join(' ')).toLowerCase().includes(q.toLowerCase()))).sort((a,b)=>(b.fav-a.fav)||b.upd-a.upd);
+ return html`<div class="fade"><div class="flex justify-between items-center mb-4"><h1 class="text-2xl font-bold">Notizen</h1><button class="btn pri" onClick=${X.newNote}><${I} n="plus"/> Neue Notiz</button></div>
+  <div class="grid grid-cols-2 md:grid-cols-3 gap-2 mb-4"><input class="inp col-span-2 md:col-span-1" style=${{marginTop:0}} placeholder="🔍 Notizen durchsuchen…" value=${q} onInput=${e=>setQ(e.target.value)}/>
+   <${Sel} v=${tg} o=${[['','Alle Tags/Kategorien'],...tags.map(x=>[x,x])]} on=${e=>setTg(e.target.value)}/>
+   <button class=${'btn '+(fav?'pri':'')} onClick=${()=>setFav(!fav)}><${I} n="star" f=${fav}/> Favoriten</button></div>
+  ${L.length?html`<div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">${L.map(n=>html`<div key=${n.id} class="card p-4 cursor-pointer fade hover:-translate-y-1" onClick=${()=>X.setModal({type:'note',id:n.id})}>
+   <div class="flex justify-between gap-2"><h3 class="font-semibold truncate">${n.title||'Ohne Titel'}</h3><button class=${n.fav?'text-amber-400':'mu'} onClick=${e=>{e.stopPropagation();X.up('notes',a=>a.map(x=>x.id===n.id?{...x,fav:!x.fav}:x))}}><${I} n="star" f=${n.fav}/></button></div>
+   <p class="text-sm mu mt-1 line-clamp-4 whitespace-pre-wrap">${n.body}</p>
+   <div class="flex flex-wrap gap-1 mt-3 text-xs">${n.cat&&html`<span class="btn" style=${{padding:'.1rem .5rem'}}>${n.cat}</span>`}${n.tags.map(t=>html`<span key=${t} class="mu">#${t}</span>`)}</div></div>`)}</div>`:html`<${Empty} m="Keine Notizen vorhanden"/>`}</div>`}
+
+function Cal({X}){const {S}=X;const [m,setM]=useState('month'),[cur,setCur]=useState(new Date());
+ const items=ds=>[...S.tasks.filter(t=>t.due&&t.due.slice(0,10)===ds).map(t=>({k:'t',o:t,title:t.title,time:t.due.slice(11),done:t.done,od:!t.done&&new Date(t.due)<new Date()})),...S.events.filter(e=>e.due.slice(0,10)===ds).map(e=>({k:'e',o:e,title:e.title,time:e.due.slice(11)}))].sort((a,b)=>a.time.localeCompare(b.time));
+ const mv=n=>{const d=new Date(cur);m==='month'?d.setMonth(d.getMonth()+n):d.setDate(d.getDate()+n*(m==='week'?7:1));setCur(d)};
+ const cs=ymd(cur),ts=ymd(new Date());
+ const open=x=>x.k==='t'?X.editTask(x.o):X.editEvent(x.o);
+ const chip=(x,i)=>html`<div key=${i} onClick=${e=>{e.stopPropagation();open(x)}} class="text-[11px] truncate rounded px-1.5 py-0.5 mb-0.5 cursor-pointer" style=${{background:x.k==='e'?'rgba(14,165,233,.28)':x.od?'rgba(239,68,68,.28)':'rgba(99,102,241,.28)',opacity:x.done?.5:1,textDecoration:x.done?'line-through':''}}>${x.time} ${x.title}</div>`;
+ const cell=(d,tall)=>{const ds=ymd(d),it=items(ds);return html`<div key=${ds} onClick=${()=>setCur(d)} class="p-1.5 cursor-pointer transition" style=${{minHeight:tall?'160px':'78px',border:'1px solid var(--bd)',borderRadius:'.7rem',background:ds===cs?'var(--hv)':'transparent',opacity:m==='month'&&d.getMonth()!==cur.getMonth()?.4:1,outline:ds===ts?'2px solid #6366f1':'none'}}><div class="text-xs mb-1 mu">${m==='week'?d.toLocaleDateString('de-DE',{weekday:'short'})+' ':''}${d.getDate()}</div>${it.slice(0,tall?8:2).map(chip)}${!tall&&it.length>2&&html`<div class="text-[10px] mu">+${it.length-2}</div>`}</div>`};
+ const ws=new Date(cur);ws.setDate(cur.getDate()-((cur.getDay()+6)%7));
+ const off=(new Date(cur.getFullYear(),cur.getMonth(),1).getDay()+6)%7;
+ const days=m==='week'?[...Array(7)].map((_,i)=>{const d=new Date(ws);d.setDate(ws.getDate()+i);return d}):[...Array(42)].map((_,i)=>new Date(cur.getFullYear(),cur.getMonth(),1-off+i));
+ const title=m==='month'?cur.toLocaleDateString('de-DE',{month:'long',year:'numeric'}):m==='week'?'KW · '+fmt(ws).split(',')[0]+' – '+days[6].toLocaleDateString('de-DE',{day:'2-digit',month:'short'}):cur.toLocaleDateString('de-DE',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+ const ag=items(cs);
+ return html`<div class="fade"><div class="flex flex-wrap justify-between items-center gap-2 mb-4"><h1 class="text-2xl font-bold">Kalender</h1><div class="flex gap-2"><button class="btn" onClick=${()=>X.newTask(cs+'T09:00')}><${I} n="plus"/> Aufgabe</button><button class="btn pri" onClick=${()=>X.newEvent(cs+'T09:00')}><${I} n="plus"/> Termin</button></div></div>
+  <div class="flex flex-wrap items-center gap-2 mb-3"><button class="btn" onClick=${()=>mv(-1)}><${I} n="left"/></button><button class="btn" onClick=${()=>setCur(new Date())}>Heute</button><button class="btn" onClick=${()=>mv(1)}><${I} n="right"/></button><span class="font-semibold mx-2 flex-1 capitalize">${title}</span>
+   <div class="flex gap-1">${[['day','Tag'],['week','Woche'],['month','Monat']].map(([k,l])=>html`<button key=${k} class=${'tab '+(m===k?'on':'')} onClick=${()=>setM(k)}>${l}</button>`)}</div></div>
+  ${m==='month'&&html`<div class="grid grid-cols-7 gap-1 mb-1 text-center text-xs mu">${['Mo','Di','Mi','Do','Fr','Sa','So'].map(d=>html`<div key=${d}>${d}</div>`)}</div>`}
+  ${m!=='day'&&html`<div class=${'grid gap-1 mb-5 '+(m==='week'?'grid-cols-1 sm:grid-cols-7':'grid-cols-7')}>${days.map(d=>cell(d,m==='week'))}</div>`}
+  <div class="card p-4"><h3 class="font-semibold mb-3">${cur.toLocaleDateString('de-DE',{weekday:'long',day:'numeric',month:'long'})}</h3>
+  ${ag.length?ag.map((x,i)=>html`<div key=${i} onClick=${()=>open(x)} class="flex gap-3 items-center py-2 border-t cursor-pointer" style=${{borderColor:'var(--bd)'}}><span class="w-14 mu text-sm">${x.time}</span><span class=${x.done?'line-through mu':''} style=${{color:x.od?'#ef4444':''}}>${x.title}</span><span class="ml-auto text-xs mu">${x.k==='e'?'Termin':'Aufgabe'}</span></div>`):html`<p class="mu text-sm">Keine Einträge an diesem Tag.</p>`}</div></div>`}
+
+function Stats({X}){const {S}=X;const done=S.tasks.filter(t=>t.done),days=[...Array(7)].map((_,i)=>{const d=new Date();d.setDate(d.getDate()-6+i);return d});
+ const cnt=d=>S.tasks.filter(t=>t.doneAt&&ymd(new Date(t.doneAt))===ymd(d)).length;const v=days.map(cnt),mx=Math.max(1,...v);
+ let st=0;for(let i=0;i<365;i++){const d=new Date();d.setDate(d.getDate()-i);if(cnt(d))st++;else if(i)break}
+ const rate=S.tasks.length?Math.round(done.length/S.tasks.length*100):0;
+ const od=S.tasks.filter(t=>!t.done&&t.due&&new Date(t.due)<new Date()).length;
+ return html`<div class="fade"><h1 class="text-2xl font-bold mb-4">Produktivität</h1>
+  <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-5"><${Stat} l="Erledigt gesamt" v=${done.length} c="#22c55e"/><${Stat} l="Erledigungsquote" v=${rate+'%'}/><${Stat} l="Serie (Tage)" v=${st+' 🔥'} c="#f59e0b"/><${Stat} l="Überfällig" v=${od} c="#ef4444"/></div>
+  <div class="grid lg:grid-cols-2 gap-5"><div class="card p-5"><h3 class="font-semibold mb-4">Letzte 7 Tage</h3><div class="flex items-end gap-2 h-40">${days.map((d,i)=>html`<div key=${i} class="flex-1 flex flex-col items-center justify-end h-full"><span class="text-xs mu">${v[i]}</span><div class="w-full rounded-t-lg" style=${{height:Math.max(4,v[i]/mx*100)+'%',background:'linear-gradient(#8b5cf6,#6366f1)',transition:'height .6s'}}></div><span class="text-xs mu mt-1">${d.toLocaleDateString('de-DE',{weekday:'short'})}</span></div>`)}</div></div>
+  <div class="card p-5"><h3 class="font-semibold mb-4">Nach Kategorie</h3>${[...S.cats,''].map(c=>{const a=S.tasks.filter(t=>t.cat===c),d=a.filter(t=>t.done).length;if(!a.length)return null;return html`<div key=${c} class="mb-3"><div class="flex justify-between text-sm"><span>${c||'Ohne Kategorie'}</span><span class="mu">${d}/${a.length}</span></div><div class="h-2 rounded-full" style=${{background:'var(--hv)'}}><div class="h-2 rounded-full" style=${{width:d/a.length*100+'%',background:'#6366f1',transition:'width .6s'}}></div></div></div>`})}${!S.tasks.length&&html`<p class="mu text-sm">Noch keine Daten.</p>`}</div></div></div>`}
+
+function Settings({X}){const {S}=X;const [c,setC]=useState('');const st=(k,v)=>X.setS(s=>({...s,set:{...s.set,[k]:v}}));
+ return html`<div class="fade max-w-2xl"><h1 class="text-2xl font-bold mb-4">Einstellungen</h1>
+  <div class="card p-5 mb-4"><${F} l="Dein Name"><input class="inp" value=${S.set.name} onInput=${e=>st('name',e.target.value)}/><//>
+   <div class="grid grid-cols-2 gap-3"><${F} l="Standard-Erinnerung"><${Sel} v=${S.set.remind} o=${REM} on=${e=>st('remind',e.target.value)}/><//><${F} l="Standard-Intervall"><${Sel} v=${S.set.repeat} o=${REP} on=${e=>st('repeat',e.target.value)}/><//></div>
+   <button class="btn" onClick=${()=>st('theme',S.set.theme==='dark'?'light':'dark')}><${I} n=${S.set.theme==='dark'?'sun':'moon'}/> ${S.set.theme==='dark'?'Light Mode':'Dark Mode'}</button></div>
+  <div class="card p-5 mb-4"><h3 class="font-semibold mb-2">Benachrichtigungen</h3><p class="text-sm mu mb-3">Status: <b>${X.perm}</b>. Erinnerungen laufen über lokale Timer, solange TaskFlow in einem Browser-Tab oder als installierte App geöffnet ist. Bei komplett geschlossenem Browser sind zeitgesteuerte Erinnerungen <b>ohne zusätzlichen Push-Dienst nicht garantiert</b>. Verpasste Erinnerungen erscheinen beim nächsten Öffnen sofort.</p>
+   <div class="flex flex-wrap gap-2"><button class="btn pri" onClick=${X.askPerm}><${I} n="bell"/> Aktivieren</button><button class="btn" onClick=${()=>notify('TaskFlow','Testbenachrichtigung ✅',X.toast)}>Test senden</button>${X.inst&&html`<button class="btn" onClick=${X.install}>App installieren</button>`}</div></div>
+  <div class="card p-5 mb-4"><h3 class="font-semibold mb-2">Kategorien</h3><div class="flex flex-wrap gap-2 mb-3">${S.cats.map(k=>html`<span key=${k} class="btn">${k}<button onClick=${()=>X.up('cats',a=>a.filter(x=>x!==k))}><${I} n="x" s=${14}/></button></span>`)}</div>
+   <form class="flex gap-2" onSubmit=${e=>{e.preventDefault();const v=c.trim();if(v&&!S.cats.includes(v))X.up('cats',a=>[...a,v]);setC('')}}><input class="inp" style=${{marginTop:0}} placeholder="Neue Kategorie" value=${c} onInput=${e=>setC(e.target.value)}/><button class="btn pri"><${I} n="plus"/></button></form></div>
+  <div class="card p-5"><h3 class="font-semibold mb-2">Daten (nur lokal im Browser)</h3><div class="flex flex-wrap gap-2"><button class="btn" onClick=${X.exp}>Export (JSON)</button><label class="btn">Import (JSON)<input type="file" accept=".json,application/json" class="hidden" onChange=${X.imp}/></label><button class="btn" style=${{color:'#ef4444'}} onClick=${X.reset}><${I} n="trash"/> Alles zurücksetzen</button></div></div></div>`}
+
+function App(){
+ const [S,setS]=useState(load),[view,setView]=useState('home'),[modal,setModal]=useState(null),[toasts,setToasts]=useState([]),[perm,setPerm]=useState('Notification' in window?Notification.permission:'nicht unterstützt'),[inst,setInst]=useState(null);
+ const dr=useRef(),qa=useRef(),ref=useRef(S);ref.current=S;
+ useEffect(()=>{localStorage.setItem(KEY,JSON.stringify(S))},[S]);
+ useEffect(()=>{document.documentElement.classList.toggle('dark',S.set.theme==='dark')},[S.set.theme]);
+ const toast=m=>{const id=uid();setToasts(t=>[...t,{id,m}]);setTimeout(()=>setToasts(t=>t.filter(x=>x.id!==id)),6000)};
+ const up=(k,fn)=>setS(s=>({...s,[k]:fn(s[k])}));
+ useEffect(()=>{
+  const tick=()=>{const s=ref.current,now=Date.now(),hits=[];
+   const chk=it=>{if(it.done||!it.due||it.remind===''||it.remind==null)return;
+    if(now<new Date(it.due).getTime()-Number(it.remind)*60000)return;
+    const rep=Number(it.repeat)||0;if(it.last&&(!rep||now-it.last<rep*60000))return;hits.push(it)};
+   s.tasks.forEach(chk);s.events.forEach(chk);if(!hits.length)return;
+   const ids=new Set(hits.map(h=>h.id)),f=a=>a.map(i=>ids.has(i.id)?{...i,last:now}:i);
+   setS(x=>({...x,tasks:f(x.tasks),events:f(x.events)}));
+   hits.forEach(h=>notify(h.title,(new Date(h.due)<new Date()?'Überfällig seit ':'Fällig: ')+fmt(h.due),toast))};
+  tick();const iv=setInterval(tick,15000);
+  const bip=e=>{e.preventDefault();setInst(e)};window.addEventListener('beforeinstallprompt',bip);
+  const key=e=>{if((e.ctrlKey||e.metaKey)&&e.key==='k'){e.preventDefault();qa.current&&qa.current.focus()}};window.addEventListener('keydown',key);
+  return()=>{clearInterval(iv);window.removeEventListener('beforeinstallprompt',bip);window.removeEventListener('keydown',key)}},[]);
+ const base=()=>({id:uid(),title:'',desc:'',cat:'',prio:2,due:'',remind:S.set.remind,repeat:S.set.repeat,recur:'none',done:false,created:Date.now()});
+ const saveTask=t=>{setS(s=>({...s,cats:t.cat&&!s.cats.includes(t.cat)?[...s.cats,t.cat]:s.cats,tasks:ups(s.tasks,{...t,prio:+t.prio})}));setModal(null)};
+ const toggle=id=>setS(s=>{const t=s.tasks.find(x=>x.id===id);if(!t)return s;const now=Date.now();
+  if(!t.done&&t.recur!=='none'&&t.due)return{...s,tasks:s.tasks.flatMap(x=>x.id!==id?[x]:[{...x,id:uid(),recur:'none',done:true,doneAt:now},{...x,due:nextDue(x.due,x.recur),last:0}])};
+  return{...s,tasks:s.tasks.map(x=>x.id===id?{...x,done:!x.done,doneAt:x.done?null:now,arch:false,last:0}:x)}});
+ const X={S,setS,up,toast,dr,perm,inst,setModal,toggle,
+  newTask:due=>setModal({type:'task',data:{...base(),due}}),editTask:t=>setModal({type:'task',data:t}),
+  newEvent:due=>setModal({type:'event',data:{id:uid(),title:'',desc:'',due,remind:15,repeat:0}}),editEvent:e=>setModal({type:'event',data:e}),
+  delTask:id=>up('tasks',a=>a.filter(x=>x.id!==id)),archive:id=>up('tasks',a=>a.map(x=>x.id===id?{...x,arch:true}:x)),
+  archiveAll:()=>up('tasks',a=>a.map(x=>x.done?{...x,arch:true}:x)),clearArch:()=>up('tasks',a=>a.filter(x=>!x.arch)),
+  reorder:(f,t)=>up('tasks',a=>{if(f===t)return a;const it=a.find(x=>x.id===f);if(!it)return a;const b=a.filter(x=>x.id!==f);b.splice(b.findIndex(x=>x.id===t),0,it);return b}),
+  newNote:()=>{const id=uid();up('notes',a=>[...a,{id,title:'',body:'',cat:'',tags:[],fav:false,upd:Date.now()}]);setModal({type:'note',id})},
+  askPerm:()=>{if(!('Notification' in window))return toast('Benachrichtigungen werden nicht unterstützt');Notification.requestPermission().then(p=>{setPerm(p);toast(p==='granted'?'Benachrichtigungen aktiv ✅':'Benachrichtigungen nicht erlaubt')})},
+  install:()=>{inst&&inst.prompt();setInst(null)},
+  exp:()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(S,null,2)],{type:'application/json'}));a.download='taskflow-backup-'+ymd(new Date())+'.json';a.click()},
+  imp:e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const d=JSON.parse(r.result);if(!Array.isArray(d.tasks))throw 0;setS({...DEF,...d,set:{...DEF.set,...d.set}});toast('Import erfolgreich ✅')}catch{toast('Ungültige Datei')}};r.readAsText(f);e.target.value=''},
+  reset:()=>{if(confirm('Wirklich ALLE Daten unwiderruflich löschen?')){localStorage.removeItem(KEY);setS(DEF);toast('Alle Daten zurückgesetzt')}}};
+ const quick=e=>{e.preventDefault();const v=qa.current.value.trim();if(!v)return;saveTask(parseQuick(v,S));qa.current.value='';toast('Aufgabe erstellt ✅')};
+ const V={home:Home,tasks:Tasks,cal:Cal,notes:Notes,stats:Stats,set:Settings}[view];
+ return html`<div class="min-h-screen md:pl-60">
+  <aside class="hidden md:flex fixed left-0 top-0 bottom-0 w-60 flex-col p-4" style=${{background:'var(--card)',borderRight:'1px solid var(--bd)'}}>
+   <div class="flex items-center gap-2 text-xl font-bold mb-6 px-2"><span class="pri w-9 h-9 rounded-xl grid place-items-center"><${I} n="check"/></span>TaskFlow</div>
+   ${NAV.map(([k,l,i])=>html`<button key=${k} class=${'nav '+(view===k?'on':'')} onClick=${()=>setView(k)}><${I} n=${i}/>${l}</button>`)}
+   <button class="nav mt-auto" onClick=${()=>setS(s=>({...s,set:{...s.set,theme:s.set.theme==='dark'?'light':'dark'}}))}><${I} n=${S.set.theme==='dark'?'sun':'moon'}/>${S.set.theme==='dark'?'Light Mode':'Dark Mode'}</button></aside>
+  <header class="sticky top-0 z-30 p-3 md:px-8 backdrop-blur" style=${{background:'color-mix(in srgb,var(--bg) 85%,transparent)'}}>
+   <form class="max-w-6xl mx-auto flex gap-2" onSubmit=${quick}><input ref=${qa} class="inp" style=${{marginTop:0}} placeholder="Schnell hinzufügen: „Zahnarzt morgen 14:30 !hoch #Privat“  (Strg+K)"/><button class="btn pri"><${I} n="plus"/></button>
+   <button type="button" class="btn md:hidden" onClick=${()=>setS(s=>({...s,set:{...s.set,theme:s.set.theme==='dark'?'light':'dark'}}))}><${I} n=${S.set.theme==='dark'?'sun':'moon'}/></button></form></header>
+  <main class="p-4 md:p-8 pb-28 max-w-6xl mx-auto"><${V} X=${X}/></main>
+  <nav class="md:hidden fixed bottom-0 inset-x-0 z-40 flex justify-around p-2" style=${{background:'var(--card)',borderTop:'1px solid var(--bd)',paddingBottom:'max(.5rem,env(safe-area-inset-bottom))'}}>${NAV.map(([k,l,i])=>html`<button key=${k} onClick=${()=>setView(k)} class="p-2 rounded-xl" style=${{color:view===k?'#8b5cf6':'var(--mu)'}}><${I} n=${i} s=${22}/></button>`)}</nav>
+  <div class="fixed top-16 right-3 z-[60] space-y-2 w-72">${toasts.map(t=>html`<div key=${t.id} class="card p-3 text-sm fade shadow-xl">${t.m}</div>`)}</div>
+  ${modal&&modal.type==='task'&&html`<${TaskForm} key=${modal.data.id} t=${modal.data} S=${S} onSave=${saveTask} onDel=${id=>{X.delTask(id);setModal(null)}} onClose=${()=>setModal(null)}/>`}
+  ${modal&&modal.type==='event'&&html`<${EventForm} key=${modal.data.id} e0=${modal.data} S=${S} onSave=${e=>{up('events',a=>ups(a,e));setModal(null)}} onDel=${id=>{up('events',a=>a.filter(x=>x.id!==id));setModal(null)}} onClose=${()=>setModal(null)}/>`}
+  ${modal&&modal.type==='note'&&html`<${NoteEditor} id=${modal.id} S=${S} up=${up} onClose=${()=>setModal(null)}/>`}
+ </div>`}
+ReactDOM.createRoot(document.getElementById('root')).render(html`<${App}/>`);
+if('serviceWorker' in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('sw.js').catch(()=>{});
+</script>
+</body>
+</html>
